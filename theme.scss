@@ -1,0 +1,128 @@
+/*-- scss:defaults --*/
+
+$body-bg:        #fcfcfb;
+$body-color:     #0b0b0b;
+$page-bg:        #f9f9f7;
+
+$primary:        #2a78d6;
+$secondary:      #898781;
+
+$font-family-sans-serif: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+$headings-font-weight: 700;
+$headings-color: #0b0b0b;
+
+$navbar-bg: #fcfcfb;
+$navbar-fg: #0b0b0b;
+$navbar-hl: #2a78d6;
+
+$border-color: rgba(11, 11, 11, 0.10);
+$border-radius: 0.25rem;
+
+$link-color: #2a78d6;
+
+$toc-color: #52514e;
+$toc-active-border: #2a78d6;
+
+/*-- scss:rules --*/
+
+body {
+  background-color: $page-bg;
+}
+
+.navbar {
+  border-bottom: 1px solid $border-color;
+  box-shadow: none !important;
+}
+.navbar-title {
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+main.content, .quarto-title-block {
+  max-width: 980px;
+}
+
+h1, h2, h3 {
+  letter-spacing: -0.01em;
+}
+h2 {
+  margin-top: 2.5em;
+  padding-top: 0.4em;
+  border-top: 1px solid $border-color;
+}
+.quarto-title-block h1 { border-top: none; margin-top: 0; padding-top: 0; }
+
+// ---- Dashboard cards ----
+.card {
+  border: 1px solid $border-color !important;
+  box-shadow: none !important;
+  border-radius: 6px !important;
+}
+.card-header {
+  background-color: transparent !important;
+  border-bottom: 1px solid $border-color !important;
+  font-weight: 600;
+  font-size: 0.92rem;
+  color: #52514e;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+// ---- Value boxes ----
+.bslib-value-box {
+  box-shadow: none !important;
+  border: 1px solid $border-color !important;
+  border-radius: 6px !important;
+}
+.bslib-value-box .value-box-title {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #52514e !important;
+  opacity: 1;
+}
+.bslib-value-box .value-box-value {
+  font-weight: 700;
+  color: #0b0b0b !important;
+}
+
+.quarto-dashboard .card.valuebox.bslib-card.bslib-value-box.bg-primary,
+.quarto-dashboard .card.valuebox.bslib-card.bslib-value-box.bg-success,
+.quarto-dashboard .card.valuebox.bslib-card.bslib-value-box.bg-warning,
+.quarto-dashboard .card.valuebox.bslib-card.bslib-value-box.bg-info,
+.quarto-dashboard .card.valuebox.bslib-card.bslib-value-box.bg-danger,
+.quarto-dashboard .card.valuebox.bslib-card.bslib-value-box.bg-secondary {
+  background-color: #fcfcfb !important;
+  border-top: 3px solid var(--vb-accent, #2a78d6) !important;
+}
+.bslib-value-box.bg-primary   { --vb-accent: #2a78d6; } // neutral / blue
+.bslib-value-box.bg-secondary { --vb-accent: #898781; } // neutral descriptive fact
+.bslib-value-box.bg-success   { --vb-accent: #0ca30c; } // status: good
+.bslib-value-box.bg-warning   { --vb-accent: #fab219; } // status: warning
+.bslib-value-box.bg-info      { --vb-accent: #4a3aa7; } // neutral violet
+.bslib-value-box.bg-danger    { --vb-accent: #d03b3b; } // status: critical
+
+.bslib-value-box .value-box-showcase, .bslib-value-box .bi {
+  color: var(--vb-accent, #2a78d6) !important;
+  opacity: 0.85;
+}
+.bslib-value-box .value-box-showcase { font-size: 1.7rem; }
+
+// ---- Leaflet popup styling ----
+.leaflet-popup-content-wrapper {
+  border-radius: 6px;
+  box-shadow: 0 1px 6px rgba(11,11,11,0.12);
+}
+.leaflet-popup-content { font-family: system-ui, -apple-system, sans-serif; }
+
+// ---- Footer ----
+.page-footer {
+  border-top: 1px solid $border-color;
+  color: #898781;
+  font-size: 0.85rem;
+}
+
+// ---- Callouts ----
+div.callout {
+  border-radius: 6px;
+}

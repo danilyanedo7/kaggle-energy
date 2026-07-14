@@ -1,0 +1,248 @@
+---
+title: "Spain's Power Grid"
+subtitle: "Generation mix & the renewables transition, 2015–2018"
+format: dashboard
+---
+
+```{r setup}
+#| include: false
+suppressPackageStartupMessages({
+  library(tidyverse)
+  library(plotly)
+  library(leaflet)
+  library(htmltools)
+  library(scales)
+  library(sf)
+  library(gstat)
+  library(terra)
+  library(crosstalk)
+})
+source("R/theme_energy.R")
+
+hourly     <- read_rds("data/processed/hourly.rds")
+monthly    <- read_csv("data/processed/monthly_mix.csv", show_col_types = FALSE)
+city       <- read_csv("data/processed/city_summary.csv", show_col_types = FALSE)
+city_daily <- read_csv("data/processed/city_daily.csv", show_col_types = FALSE)
+profile    <- read_csv("data/processed/hourly_profile.csv", show_col_types = FALSE)
+wind_regions <- st_read("data/processed/wind_regions.geojson", quiet = TRUE)
+
+yearly <- hourly |>
+  group_by(year) |>
+  summarise(
+    renewable_share = sum(renewable, na.rm = TRUE) / sum(total_generation, na.rm = TRUE),
+    fossil = sum(fossil, na.rm = TRUE),
+    hydro  = sum(hydro, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+kpi_renewable_2018 <- yearly$renewable_share[yearly$year == 2018]
+kpi_hydro_drop   <- (yearly$hydro[yearly$year == 2017]  - yearly$hydro[yearly$year == 2016])  / yearly$hydro[yearly$year == 2016]
+kpi_fossil_jump  <- (yearly$fossil[yearly$year == 2017] - yearly$fossil[yearly$year == 2016]) / yearly$fossil[yearly$year == 2016]
+
+price_by_q <- hourly |>
+  filter(!is.na(renewable_share)) |>
+  mutate(q = ntile(renewable_share, 4)) |>
+  group_by(q) |>
+  summarise(avg_price = mean(price_actual, na.rm = TRUE), .groups = "drop")
+
+kpi_price_diff_pct <- (price_by_q$avg_price[price_by_q$q == 4] - price_by_q$avg_price[price_by_q$q == 1]) /
+  price_by_q$avg_price[price_by_q$q == 1]
+```
+
+## Row {height=140}
+
+```{r}
+#| content: valuebox
+#| title: "Renewable Share · 2018"
+list(icon = "sun", color = "primary", value = percent(kpi_renewable_2018, accuracy = 0.1))
+```
+
+```{r}
+#| content: valuebox
+#| title: "Hydro Drop · 2017 Drought"
+list(icon = "droplet", color = "secondary", value = percent(kpi_hydro_drop, accuracy = 1))
+```
+
+```{r}
+#| content: valuebox
+#| title: "Fossil Backup · 2017"
+list(icon = "fuel-pump", color = "secondary", value = paste0("+", percent(kpi_fossil_jump, accuracy = 1)))
+```
+
+```{r}
+#| content: valuebox
+#| title: "Renewables' Price Discount"
+list(icon = "cash-coin", color = "success", value = percent(abs(kpi_price_diff_pct), accuracy = 1))
+```
+
+## Row {height=430}
+
+```{r}
+#| title: "Monthly generation mix, 2015–2018"
+mix_long <- monthly |>
+  transmute(
+    month,
+    Fossil  = fossil,
+    Nuclear = nuclear,
+    Wind    = wind,
+    Hydro   = hydro,
+    Solar   = solar,
+    Other   = other_renewable + other
+  ) |>
+  pivot_longer(-month, names_to = "source", values_to = "mwh") |>
+  mutate(
+    source = factor(source, levels = rev(source_levels)),
+    gwh = mwh / 1000
+  )
+
+p_mix <- ggplot(mix_long, aes(month, gwh, fill = source, group = source,
+                               text = paste0(format(month, "%b %Y"), "<br>", source, ": ",
+                                              label_comma()(round(gwh)), " GWh"))) +
+  geom_area(position = "stack", color = "#fcfcfb", linewidth = 0.2) +
+  scale_fill_manual(values = source_colors, breaks = source_levels, name = NULL) +
+  scale_x_date(date_labels = "%Y", date_breaks = "1 year", expand = expansion(mult = c(0.01, 0.01))) +
+  scale_y_continuous(labels = label_comma(suffix = " GWh"), expand = expansion(mult = c(0, 0.05))) +
+  labs(x = NULL, y = NULL)
+
+ggplotly(p_mix, tooltip = "text") |>
+  layout(
+    legend = list(orientation = "h", y = 1.12, x = 0, traceorder = "normal"),
+    hovermode = "x unified",
+    margin = list(t = 40)
+  )
+```
+
+## Row {height=520}
+
+```{r}
+#| title: "Five weather-station cities and regional wind capacity"
+# 5 distinct hues from the site's validated categorical palette, reused here
+# for city identity (a different dimension than generation source, so a
+# little hue overlap with that chart is an acceptable trade-off)
+city_colors <- setNames(
+  c("#2a78d6", "#1baf7a", "#eda100", "#4a3aa7", "#e34948"),
+  sort(unique(city$city_name))
+)
+
+city_pop <- city |>
+  mutate(
+    marker_color = unname(city_colors[city_name]),
+    popup = paste0(
+      "<strong>", city_name, "</strong><br>",
+      "Population (approx.): ", label_comma()(population), "<br>",
+      "Avg. temperature: ", round(avg_temp_c, 1), " °C<br>",
+      "Typical range: ", round(min_temp_c), "-", round(max_temp_c), " °C<br>",
+      "Avg. wind speed: ", round(avg_wind_speed, 1), " m/s<br>",
+      "Clear-sky hours: ", round(pct_clear), "%<br>",
+      "Rainy hours: ", round(pct_rain), "%"
+    )
+  )
+
+# IDW-interpolated temperature surface across mainland Spain + Balearics, from
+# just the 5 weather-station points -- illustrative with this few stations,
+# not a real meteorological analysis, masked to the region outline so it
+# doesn't imply coverage over the sea, Portugal, or France
+spain_outline <- st_union(wind_regions)
+temp_template <- rast(ext(-9.5, 4.5, 35.8, 43.9), resolution = c(0.06, 0.06), crs = "EPSG:4326")
+temp_grid_xy  <- xyFromCell(temp_template, seq_len(ncell(temp_template)))
+temp_grid     <- st_as_sf(as.data.frame(temp_grid_xy), coords = c("x", "y"), crs = 4326, remove = FALSE)
+city_sf       <- st_as_sf(city, coords = c("lon", "lat"), crs = 4326, remove = FALSE)
+
+idw_fit <- idw(avg_temp_c ~ 1, city_sf, newdata = temp_grid, idp = 2, debug.level = 0)
+temp_raster <- rasterize(vect(idw_fit), temp_template, field = "var1.pred") |> mask(vect(spain_outline))
+
+wind_pal <- colorNumeric(seq_blue, domain = wind_regions$wind_mw_per_1000km2, na.color = "transparent")
+temp_pal <- colorNumeric(seq_blue, domain = values(temp_raster), na.color = "transparent")
+
+sd_city_map <- SharedData$new(city_pop, key = ~city_name, group = "city_select")
+
+leaflet(options = leafletOptions(scrollWheelZoom = FALSE)) |>
+  addProviderTiles(providers$CartoDB.Positron) |>
+  setView(lng = -3.9, lat = 39.8, zoom = 5.5) |>
+  addPolygons(
+    data = wind_regions, group = "Wind capacity (2022, external reference)",
+    fillColor = ~wind_pal(wind_mw_per_1000km2), fillOpacity = 0.75, color = "#fcfcfb", weight = 1,
+    label = ~paste0(region, ": ", label_comma()(round(wind_mw)), " MW total (",
+                     round(wind_mw_per_1000km2), " MW / 1,000 km2)")
+  ) |>
+  addRasterImage(temp_raster, group = "Temperature (interpolated from 5 cities)", colors = temp_pal, opacity = 0.8) |>
+  addCircleMarkers(
+    data = sd_city_map, group = "Weather stations",
+    lng = ~lon, lat = ~lat, radius = 11,
+    stroke = TRUE, weight = 1.5, color = "#0b0b0b",
+    fillColor = ~marker_color, fillOpacity = 0.9,
+    label = ~lapply(paste0("<strong>", city_name, "</strong> · ", round(avg_temp_c, 1), "°C avg, ",
+                            round(avg_wind_speed, 1), " m/s wind"), HTML),
+    labelOptions = labelOptions(direction = "top", textsize = "13px",
+                                 style = list("font-family" = "system-ui", "font-size" = "13px")),
+    popup = ~popup,
+    popupOptions = popupOptions(closeButton = TRUE)
+  ) |>
+  addLayersControl(
+    baseGroups = c("Wind capacity (2022, external reference)", "Temperature (interpolated from 5 cities)"),
+    overlayGroups = "Weather stations",
+    options = layersControlOptions(collapsed = FALSE)
+  ) |>
+  addLegend(pal = wind_pal, values = wind_regions$wind_mw_per_1000km2,
+            title = "Wind, MW/1,000km2", position = "bottomleft")
+```
+
+The wind-capacity layer uses external 2022 reference data (AEE via Wikipedia), separate from the Kaggle dataset. It's here to show that Spain's wind farms cluster in Castilla y León, Galicia and Aragón, well away from these five weather-observation cities. That gap is the reason the link between wind speed and wind generation in the [Deep Dive](deep-dive.qmd) turns out so weak.
+
+The legend in the bottom-left is for the wind-capacity layer (the map doesn't switch legends when you toggle between the two layers). For temperature, switch to that layer above and hover any city marker to see its exact value.
+
+## Row {height=420}
+
+```{r}
+#| title: "Explore one city at a time"
+city_daily_sd <- city_daily |> left_join(city |> select(city_name), by = "city_name")
+sd_city_chart <- SharedData$new(city_daily_sd, key = ~city_name, group = "city_select")
+
+city_filter <- filter_select("city_select_input", "Choose a city (filters the map above too)",
+                              sd_city_map, ~city_name)
+
+p_city_temp <- plot_ly(sd_city_chart, x = ~date, y = ~temp_c, color = ~city_name,
+                        colors = unname(city_colors[sort(unique(city$city_name))]),
+                        type = "scatter", mode = "lines", line = list(width = 1)) |>
+  layout(showlegend = TRUE, yaxis = list(title = "Daily avg. temp (deg C)"), xaxis = list(title = NULL),
+         legend = list(orientation = "h", y = 1.1, x = 0))
+
+div(city_filter, p_city_temp)
+```
+
+## Row {height=380}
+
+### Column {width=50%}
+
+```{r}
+#| title: "Renewable share rises and falls with the weather"
+p_share <- ggplot(monthly, aes(month, renewable_share,
+                                text = paste0(format(month, "%b %Y"), "<br>",
+                                              percent(renewable_share, accuracy = 0.1), " renewable"))) +
+  geom_line(color = source_colors[["Hydro"]], linewidth = 0.9) +
+  geom_point(color = source_colors[["Hydro"]], size = 1.1) +
+  scale_x_date(date_labels = "%Y", date_breaks = "1 year") +
+  scale_y_continuous(labels = percent, limits = c(0, NA)) +
+  labs(x = NULL, y = NULL)
+
+ggplotly(p_share, tooltip = "text") |> layout(margin = list(t = 20))
+```
+
+### Column {width=50%}
+
+```{r}
+#| title: "When Spain uses power, by season"
+season_colors <- c("Winter" = "#2a78d6", "Spring" = "#1baf7a", "Summer" = "#eb6834", "Autumn" = "#eda100")
+
+p_season <- ggplot(profile, aes(hour_local, load / 1000, color = season, group = season,
+                                 text = paste0(season, ", ", hour_local, ":00, ",
+                                               label_comma(accuracy = 0.1)(load / 1000), " GW"))) +
+  geom_line(linewidth = 0.9) +
+  scale_color_manual(values = season_colors, name = NULL) +
+  scale_x_continuous(breaks = seq(0, 24, 6)) +
+  scale_y_continuous(labels = label_comma(suffix = " GW")) +
+  labs(x = "Hour of day (local time)", y = NULL)
+
+ggplotly(p_season, tooltip = "text") |>
+  layout(legend = list(orientation = "h", y = 1.15, x = 0), margin = list(t = 30))
+```

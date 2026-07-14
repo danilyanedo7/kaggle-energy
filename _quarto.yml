@@ -1,0 +1,58 @@
+project:
+  type: website
+  output-dir: _site
+  render:
+    - index.qmd
+    - deep-dive.qmd
+
+website:
+  title: "Spain's Power Grid"
+  description: "A visual, data-driven look at Spain's shift from fossil to renewable electricity, 2015–2018."
+  site-url: "https://danilyanedo7.github.io/kaggle-energy/"
+  navbar:
+    background: light
+    left:
+      - href: index.qmd
+        text: "Dashboard"
+      - href: deep-dive.qmd
+        text: "Deep Dive"
+    right:
+      - icon: github
+        href: https://github.com/danilyanedo7/kaggle-energy
+        aria-label: GitHub repository
+  page-footer:
+    left: "Data: [Kaggle, Hourly energy demand, generation, prices & weather (Spain)](https://www.kaggle.com/datasets/nicholasjhana/energy-consumption-generation-prices-and-weather)"
+    center: "[edodanilyan.com](https://edodanilyan.com)"
+    right: "Built with love in [Quarto](https://quarto.org)"
+  page-navigation: true
+
+format:
+  html:
+    theme: [cosmo, theme.scss]
+    fontsize: 1rem
+    linkcolor: "#2a78d6"
+    toc: true
+    toc-location: right
+    toc-depth: 3
+    code-fold: true
+    code-tools: true
+    code-summary: "Show the R code"
+    fig-align: center
+    embed-resources: false
+    grid:
+      body-width: 900px
+
+  dashboard:
+    theme: [cosmo, theme.scss]
+    nav-buttons: [github]
+    scrolling: true
+    expandable: true
+
+execute:
+  freeze: auto
+  warning: false
+  message: false
+
+knitr:
+  opts_chunk:
+    dev: "ragg_png"

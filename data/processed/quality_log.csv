@@ -1,0 +1,7 @@
+check,value
+Raw energy rows,35064
+Energy rows after de-dup,35064
+Raw weather rows,178396
+Weather rows after de-dup,175320
+Energy timestamps with any NA generation column (pre-fill),35064
+Date range,2015-01-01 to 2018-12-31
